@@ -1,0 +1,158 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pickle
+import numpy as np
+
+st.set_page_config(page_title="Airline Satisfaction Dashboard", layout="wide")
+
+DATA_URL = "https://raw.githubusercontent.com/wessamsw/Airline_Passenger_Satisfaction/main/airline_passenger_satisfaction.csv"
+
+@st.cache_data
+def load_data():
+    return pd.read_csv(DATA_URL)
+
+df = load_data()
+
+st.title("✈️ Airline Passenger Satisfaction Dashboard")
+st.markdown("### Customer Experience Analytics — Agile Data Science PMA")
+
+# --- Interactive Feature 1: Sidebar Dropdowns ---
+st.sidebar.header("🔍 Filter Options")
+
+travel_class = st.sidebar.selectbox(
+    "Select Travel Class",
+    options=["All"] + sorted(df['Class'].unique().tolist())
+)
+
+travel_type = st.sidebar.selectbox(
+    "Select Type of Travel",
+    options=["All"] + sorted(df['Type of Travel'].unique().tolist())
+)
+
+# --- Interactive Feature 2: Age Slider ---
+age_range = st.sidebar.slider(
+    "Select Age Range",
+    int(df['Age'].min()),
+    int(df['Age'].max()),
+    (20, 60)
+)
+
+# Apply filters
+filtered_df = df.copy()
+if travel_class != "All":
+    filtered_df = filtered_df[filtered_df['Class'] == travel_class]
+if travel_type != "All":
+    filtered_df = filtered_df[filtered_df['Type of Travel'] == travel_type]
+filtered_df = filtered_df[
+    (filtered_df['Age'] >= age_range[0]) & 
+    (filtered_df['Age'] <= age_range[1])
+]
+
+st.markdown(f"**Showing {len(filtered_df):,} passengers**")
+
+# --- Visualization 1: Satisfaction Distribution ---
+st.subheader("1. Passenger Satisfaction Distribution")
+fig1, ax1 = plt.subplots(figsize=(6, 4))
+filtered_df['Satisfaction'].value_counts().plot(
+    kind='bar', color=['#e74c3c', '#2ecc71'], ax=ax1)
+ax1.set_title("Satisfaction Count")
+ax1.set_xlabel("Satisfaction")
+ax1.set_ylabel("Count")
+ax1.tick_params(axis='x', rotation=0)
+plt.tight_layout()
+st.pyplot(fig1)
+
+# --- Visualization 2: Age Distribution ---
+st.subheader("2. Age Distribution of Passengers")
+fig2, ax2 = plt.subplots(figsize=(6, 4))
+filtered_df['Age'].hist(bins=30, color='steelblue', 
+                         edgecolor='black', ax=ax2)
+ax2.set_title("Passenger Age Distribution")
+ax2.set_xlabel("Age")
+ax2.set_ylabel("Frequency")
+plt.tight_layout()
+st.pyplot(fig2)
+
+# --- Visualization 3: Average Service Ratings ---
+st.subheader("3. Average In-flight Service Ratings")
+service_cols = ['Seat Comfort', 'Food and Drink', 'In-flight Service',
+                'In-flight Entertainment', 'Cleanliness', 'Leg Room Service']
+avg_ratings = filtered_df[service_cols].mean().sort_values()
+fig3, ax3 = plt.subplots(figsize=(8, 4))
+avg_ratings.plot(kind='barh', color='steelblue', ax=ax3)
+ax3.set_title("Average Service Quality Ratings")
+ax3.set_xlabel("Average Rating (1-5)")
+plt.tight_layout()
+st.pyplot(fig3)
+
+# --- Predictive Output ---
+st.subheader("4. 🔮 Predict Passenger Satisfaction")
+st.markdown("Fill in passenger details to get a satisfaction prediction:")
+
+col1, col2 = st.columns(2)
+with col1:
+    age = st.number_input("Age", min_value=1, max_value=100, value=35)
+    flight_distance = st.number_input("Flight Distance (km)", 
+                                       min_value=0, max_value=10000, value=1000)
+    seat_comfort = st.slider("Seat Comfort Rating", 1, 5, 3)
+    inflight_wifi = st.slider("In-flight Wifi Rating", 1, 5, 3)
+    online_boarding = st.slider("Online Boarding Rating", 1, 5, 3)
+
+with col2:
+    gender = st.selectbox("Gender", ["Male", "Female"])
+    travel_class_pred = st.selectbox("Class", ["Business", "Eco", "Eco Plus"])
+    travel_type_pred = st.selectbox("Type of Travel", 
+                                     ["Business travel", "Personal Travel"])
+    inflight_entertainment = st.slider("In-flight Entertainment Rating", 1, 5, 3)
+    food_drink = st.slider("Food and Drink Rating", 1, 5, 3)
+
+if st.button("🚀 Predict Satisfaction"):
+    gender_enc = 1 if gender == "Male" else 0
+    class_map = {"Business": 0, "Eco": 1, "Eco Plus": 2}
+    class_enc = class_map[travel_class_pred]
+    travel_enc = 0 if travel_type_pred == "Business travel" else 1
+
+    from sklearn.preprocessing import StandardScaler
+    temp_scaler = StandardScaler()
+    temp_scaler.fit(df[['Age', 'Flight Distance', 
+                          'Departure Delay', 'Arrival Delay']].fillna(0))
+
+    scaled_vals = temp_scaler.transform([[age, flight_distance, 0, 0]])[0]
+
+    input_data = pd.DataFrame([[
+        gender_enc, 1, travel_enc, class_enc,
+        scaled_vals[0], scaled_vals[1], 0, 0,
+        3, 3, 3, online_boarding, 3, 3,
+        seat_comfort, 3, 3, food_drink, 3,
+        inflight_wifi, inflight_entertainment, 3
+    ]], columns=[
+        'Gender_encoded', 'Customer Type_encoded',
+        'Type of Travel_encoded', 'Class_encoded',
+        'Age_scaled', 'Flight Distance_scaled',
+        'Departure Delay_scaled', 'Arrival Delay_scaled',
+        'Departure and Arrival Time Convenience',
+        'Ease of Online Booking', 'Check-in Service',
+        'Online Boarding', 'Gate Location', 'On-board Service',
+        'Seat Comfort', 'Leg Room Service', 'Cleanliness',
+        'Food and Drink', 'In-flight Service',
+        'In-flight Wifi Service', 'In-flight Entertainment',
+        'Baggage Handling'
+    ])
+
+    try:
+        with open('best_model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        prediction = model.predict(input_data)[0]
+        probability = model.predict_proba(input_data)[0]
+        if prediction == 1:
+            st.success(
+                f"✅ Predicted: SATISFIED "
+                f"(Confidence: {probability[1]*100:.1f}%)")
+        else:
+            st.error(
+                f"❌ Predicted: NEUTRAL OR DISSATISFIED "
+                f"(Confidence: {probability[0]*100:.1f}%)")
+    except:
+        st.warning("Model file not found. Please ensure best_model.pkl exists.")
