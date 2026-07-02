@@ -46,7 +46,7 @@ if travel_class != "All":
 if travel_type != "All":
     filtered_df = filtered_df[filtered_df['Type of Travel'] == travel_type]
 filtered_df = filtered_df[
-    (filtered_df['Age'] >= age_range[0]) & 
+    (filtered_df['Age'] >= age_range[0]) &
     (filtered_df['Age'] <= age_range[1])
 ]
 
@@ -67,8 +67,8 @@ st.pyplot(fig1)
 # --- Visualization 2: Age Distribution ---
 st.subheader("2. Age Distribution of Passengers")
 fig2, ax2 = plt.subplots(figsize=(6, 4))
-filtered_df['Age'].hist(bins=30, color='steelblue', 
-                         edgecolor='black', ax=ax2)
+filtered_df['Age'].hist(bins=30, color='steelblue',
+                        edgecolor='black', ax=ax2)
 ax2.set_title("Passenger Age Distribution")
 ax2.set_xlabel("Age")
 ax2.set_ylabel("Frequency")
@@ -94,8 +94,8 @@ st.markdown("Fill in passenger details to get a satisfaction prediction:")
 col1, col2 = st.columns(2)
 with col1:
     age = st.number_input("Age", min_value=1, max_value=100, value=35)
-    flight_distance = st.number_input("Flight Distance (km)", 
-                                       min_value=0, max_value=10000, value=1000)
+    flight_distance = st.number_input("Flight Distance (km)",
+                                      min_value=0, max_value=10000, value=1000)
     seat_comfort = st.slider("Seat Comfort Rating", 1, 5, 3)
     inflight_wifi = st.slider("In-flight Wifi Rating", 1, 5, 3)
     online_boarding = st.slider("Online Boarding Rating", 1, 5, 3)
@@ -103,8 +103,8 @@ with col1:
 with col2:
     gender = st.selectbox("Gender", ["Male", "Female"])
     travel_class_pred = st.selectbox("Class", ["Business", "Eco", "Eco Plus"])
-    travel_type_pred = st.selectbox("Type of Travel", 
-                                     ["Business travel", "Personal Travel"])
+    travel_type_pred = st.selectbox("Type of Travel",
+                                    ["Business travel", "Personal Travel"])
     inflight_entertainment = st.slider("In-flight Entertainment Rating", 1, 5, 3)
     food_drink = st.slider("Food and Drink Rating", 1, 5, 3)
 
@@ -116,9 +116,8 @@ if st.button("🚀 Predict Satisfaction"):
 
     from sklearn.preprocessing import StandardScaler
     temp_scaler = StandardScaler()
-    temp_scaler.fit(df[['Age', 'Flight Distance', 
-                          'Departure Delay', 'Arrival Delay']].fillna(0))
-
+    temp_scaler.fit(df[['Age', 'Flight Distance',
+                         'Departure Delay', 'Arrival Delay']].fillna(0))
     scaled_vals = temp_scaler.transform([[age, flight_distance, 0, 0]])[0]
 
     input_data = pd.DataFrame([[
@@ -155,4 +154,93 @@ if st.button("🚀 Predict Satisfaction"):
                 f"❌ Predicted: NEUTRAL OR DISSATISFIED "
                 f"(Confidence: {probability[0]*100:.1f}%)")
     except:
-        st.warning("Model file not found. Please ensure best_model.pkl exists.")
+        st.warning("Model file not found.")
+
+# =============================================
+# Q5 — MONITORING SECTION
+# =============================================
+st.markdown("---")
+st.header("📊 5. Monitoring Metrics & Drift Analysis")
+
+# --- Monitoring Metric 1: Satisfaction Rate ---
+st.subheader("Monitoring Metric 1: Overall Satisfaction Rate")
+satisfaction_rate = (df['Satisfaction'] == 'Satisfied').mean() * 100
+filtered_sat_rate = (filtered_df['Satisfaction'] == 'Satisfied').mean() * 100
+
+col1, col2 = st.columns(2)
+with col1:
+    st.metric(
+        label="Overall Satisfaction Rate",
+        value=f"{satisfaction_rate:.2f}%",
+        help="Percentage of all passengers who are satisfied"
+    )
+with col2:
+    st.metric(
+        label="Filtered Satisfaction Rate",
+        value=f"{filtered_sat_rate:.2f}%",
+        delta=f"{filtered_sat_rate - satisfaction_rate:.2f}% vs overall",
+        help="Satisfaction rate for currently filtered passengers"
+    )
+
+# --- Monitoring Metric 2: Data Quality ---
+st.subheader("Monitoring Metric 2: Data Quality")
+missing_total = df.isnull().sum().sum()
+duplicate_total = df.duplicated().sum()
+invalid_cleanliness = len(df[(df['Cleanliness'] < 1) | (df['Cleanliness'] > 5)])
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric(label="Missing Values", value=missing_total)
+with col2:
+    st.metric(label="Duplicate Rows", value=duplicate_total)
+with col3:
+    st.metric(label="Invalid Cleanliness Ratings", value=invalid_cleanliness)
+
+# --- Drift Analysis ---
+st.subheader("Data Drift Analysis: Old vs New Data")
+st.markdown("*Simulating drift by comparing first half (old) vs second half (new) of dataset*")
+
+mid = len(df) // 2
+old_data = df.iloc[:mid]
+new_data = df.iloc[mid:]
+
+old_sat = (old_data['Satisfaction'] == 'Satisfied').mean() * 100
+new_sat = (new_data['Satisfaction'] == 'Satisfied').mean() * 100
+old_delay = old_data['Departure Delay'].mean()
+new_delay = new_data['Departure Delay'].mean()
+
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown("**Satisfaction Rate Drift**")
+    drift_data = pd.DataFrame({
+        'Period': ['Old Data (First Half)', 'New Data (Second Half)'],
+        'Satisfaction Rate (%)': [round(old_sat, 2), round(new_sat, 2)]
+    })
+    fig_drift1, ax_drift1 = plt.subplots(figsize=(5, 3))
+    ax_drift1.bar(drift_data['Period'], drift_data['Satisfaction Rate (%)'],
+                  color=['#3498db', '#e67e22'])
+    ax_drift1.set_title("Satisfaction Rate: Old vs New")
+    ax_drift1.set_ylabel("Satisfaction Rate (%)")
+    ax_drift1.set_ylim(0, 100)
+    plt.tight_layout()
+    st.pyplot(fig_drift1)
+    st.metric("Satisfaction Drift",
+              f"{abs(new_sat - old_sat):.2f}%",
+              delta=f"{new_sat - old_sat:.2f}%")
+
+with col2:
+    st.markdown("**Departure Delay Drift**")
+    delay_data = pd.DataFrame({
+        'Period': ['Old Data (First Half)', 'New Data (Second Half)'],
+        'Avg Delay (mins)': [round(old_delay, 2), round(new_delay, 2)]
+    })
+    fig_drift2, ax_drift2 = plt.subplots(figsize=(5, 3))
+    ax_drift2.bar(delay_data['Period'], delay_data['Avg Delay (mins)'],
+                  color=['#3498db', '#e67e22'])
+    ax_drift2.set_title("Avg Departure Delay: Old vs New")
+    ax_drift2.set_ylabel("Average Delay (minutes)")
+    plt.tight_layout()
+    st.pyplot(fig_drift2)
+    st.metric("Delay Drift",
+              f"{abs(new_delay - old_delay):.2f} mins",
+              delta=f"{new_delay - old_delay:.2f} mins")
